@@ -3,15 +3,15 @@ import mediapipe as mp
 
 # ===== INIT =====
 mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(min_detection_confidence=0.7,
-                       min_tracking_confidence=0.7)
+hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7)
 
 mp_draw = mp.solutions.drawing_utils
 
 cap = cv2.VideoCapture(0)
 
+
 # ===== FONCTION : doigts levés =====
-def fingers_up(lm):
+def fingers_up(lm, hand_label):
 
     fingers = []
 
@@ -27,8 +27,11 @@ def fingers_up(lm):
     # Pinky (20 vs 18)
     fingers.append(lm[20].y < lm[18].y)
 
-    # Thumb (horizontal)
-    fingers.append(lm[4].x > lm[3].x)
+    # Pouce : sens inversé selon la main (avec effet miroir)
+    if hand_label == "Right":
+        fingers.append(lm[4].x < lm[3].x)
+    else:
+        fingers.append(lm[4].x > lm[3].x)
 
     return fingers
 
@@ -48,35 +51,37 @@ while True:
 
     if result.multi_hand_landmarks:
 
-        for hand_landmarks in result.multi_hand_landmarks:
+        for hand_landmarks, hand_info in zip(
+            result.multi_hand_landmarks, result.multi_handedness
+        ):
 
-            mp_draw.draw_landmarks(frame, hand_landmarks,
-                                   mp_hands.HAND_CONNECTIONS)
+            mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
             lm = hand_landmarks.landmark
-            fingers = fingers_up(lm)
+            hand_label = hand_info.classification[0].label  # "Right" ou "Left"
+            fingers = fingers_up(lm, hand_label)
 
             # ===== LOGIQUE GESTES =====
 
-            if fingers == [False, False, False, False, False]:
-                gesture_text = "POING ✊"
+            if fingers[:4] == [False, False, False, False]:
+                gesture_text = "POING"
 
             elif fingers == [True, True, True, True, True]:
-                gesture_text = "MAIN OUVERTE ✋"
+                gesture_text = "MAIN OUVERTE"
 
-            elif fingers == [True, False, False, False, False]:
-                gesture_text = "INDEX ☝️"
+            elif fingers[0] == True and fingers[1:4] == [False, False, False]:
+                gesture_text = "INDEX"
 
-            elif fingers == [True, True, False, False, False]:
-                gesture_text = "PEACE ✌️"
+            elif fingers[:2] == [True, True] and fingers[2:4] == [False, False]:
+                gesture_text = "PEACE"
 
             else:
                 gesture_text = "UNKNOWN"
 
     # ===== AFFICHAGE =====
-    cv2.putText(frame, gesture_text, (50, 100),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.5,
-                (0, 255, 0), 3)
+    cv2.putText(
+        frame, gesture_text, (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3
+    )
 
     cv2.imshow("Gesture Detection", frame)
 
@@ -85,3 +90,4 @@ while True:
 
 cap.release()
 cv2.destroyAllWindows()
+# fsdgkjk
