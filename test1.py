@@ -9,6 +9,15 @@ mp_draw = mp.solutions.drawing_utils
 
 cap = cv2.VideoCapture(0)
 
+# ===== CHARGEMENT DES IMAGES =====
+gesture_images = {
+    "POING": cv2.imread("poing.jpg"),
+    "main ouverte": cv2.imread("main_ouverte.jpg"),
+    "INDEX": cv2.imread("index.jpg"),
+    "PEACE": cv2.imread("peace.jpg"),
+    "UNKNOWN": cv2.imread("unknown.jpg"),
+}
+
 
 # ===== FONCTION : doigts levés =====
 def fingers_up(lm, hand_label):
@@ -67,7 +76,7 @@ while True:
                 gesture_text = "POING"
 
             elif fingers == [True, True, True, True, True]:
-                gesture_text = "MAIN OUVERTE"
+                gesture_text = "main ouverte"
 
             elif fingers[0] == True and fingers[1:4] == [False, False, False]:
                 gesture_text = "INDEX"
@@ -82,6 +91,14 @@ while True:
     cv2.putText(
         frame, gesture_text, (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3
     )
+
+    # Afficher l'image correspondante au geste
+    if gesture_text in gesture_images and gesture_images[gesture_text] is not None:
+        # Redimensionner l'image pour l'affichage (par exemple 200x200)
+        img_resized = cv2.resize(gesture_images[gesture_text], (200, 200))
+        # Positionner l'image en haut à droite
+        h, w = img_resized.shape[:2]
+        frame[10 : 10 + h, frame.shape[1] - 10 - w : frame.shape[1] - 10] = img_resized
 
     cv2.imshow("Gesture Detection", frame)
 
