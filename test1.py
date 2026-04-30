@@ -6,37 +6,49 @@ mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7)
 
 mp_draw = mp.solutions.drawing_utils
-
 cap = cv2.VideoCapture(0)
 
 # ===== CHARGEMENT DES IMAGES =====
 gesture_images = {
     "POING": cv2.imread("poing.jpg"),
-    "main ouverte": cv2.imread("main_ouverte.jpg"),
+    "main ouverte": cv2.imread("hand.jpg"),
     "INDEX": cv2.imread("index.jpg"),
     "PEACE": cv2.imread("peace.jpg"),
     "UNKNOWN": cv2.imread("unknown.jpg"),
 }
 
+# ===== CHARGER EMOJIS (CHEMIN ABSOLU RECOMMANDÉ) =====
+fist_img = cv2.imread("fist.png")
+hand_img = cv2.imread("hand.png")
+peace_img = cv2.imread("peace.png")
 
-# ===== FONCTION : doigts levés =====
+# ===== VERIFICATION =====
+print("fist:", fist_img is None)
+print("hand:", hand_img is None)
+print("peace:", peace_img is None)
+
+
+# ===== FONCTION OVERLAY (ANTI-CRASH) =====
+def overlay_image(frame, img, x, y, size=120):
+    if img is None:
+        return  # évite crash
+
+    img = cv2.resize(img, (size, size))
+    h, w, _ = img.shape
+
+    if y + h <= frame.shape[0] and x + w <= frame.shape[1]:
+        frame[y : y + h, x : x + w] = img
+
+
+# ===== FONCTION DOIGTS =====
 def fingers_up(lm, hand_label):
-
     fingers = []
 
-    # Index (8 vs 6)
-    fingers.append(lm[8].y < lm[6].y)
+    fingers.append(lm[8].y < lm[6].y)  # index
+    fingers.append(lm[12].y < lm[10].y)  # middle
+    fingers.append(lm[16].y < lm[14].y)  # ring
+    fingers.append(lm[20].y < lm[18].y)  # pinky
 
-    # Middle (12 vs 10)
-    fingers.append(lm[12].y < lm[10].y)
-
-    # Ring (16 vs 14)
-    fingers.append(lm[16].y < lm[14].y)
-
-    # Pinky (20 vs 18)
-    fingers.append(lm[20].y < lm[18].y)
-
-    # Pouce : sens inversé selon la main (avec effet miroir)
     if hand_label == "Right":
         fingers.append(lm[4].x < lm[3].x)
     else:
@@ -51,12 +63,10 @@ while True:
     if not ret:
         break
 
-    frame = cv2.flip(frame, 1)  # effet miroir
+    frame = cv2.flip(frame, 1)
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
     result = hands.process(rgb)
-
-    gesture_text = ""
 
     if result.multi_hand_landmarks:
 
@@ -67,38 +77,23 @@ while True:
             mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
             lm = hand_landmarks.landmark
-            hand_label = hand_info.classification[0].label  # "Right" ou "Left"
+            hand_label = hand_info.classification[0].label
+
             fingers = fingers_up(lm, hand_label)
 
-            # ===== LOGIQUE GESTES =====
+            # ===== GESTES + EMOJI =====
 
             if fingers[:4] == [False, False, False, False]:
-                gesture_text = "POING"
+                overlay_image(frame, fist_img, 50, 150)
 
-            elif fingers == [True, True, True, True, True]:
-                gesture_text = "main ouverte"
+            elif fingers.count(True) >= 4:
+                overlay_image(frame, hand_img, 50, 150)
 
             elif fingers[0] == True and fingers[1:4] == [False, False, False]:
                 gesture_text = "INDEX"
 
             elif fingers[:2] == [True, True] and fingers[2:4] == [False, False]:
-                gesture_text = "PEACE"
-
-            else:
-                gesture_text = "UNKNOWN"
-
-    # ===== AFFICHAGE =====
-    cv2.putText(
-        frame, gesture_text, (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3
-    )
-
-    # Afficher l'image correspondante au geste
-    if gesture_text in gesture_images and gesture_images[gesture_text] is not None:
-        # Redimensionner l'image pour l'affichage (par exemple 200x200)
-        img_resized = cv2.resize(gesture_images[gesture_text], (200, 200))
-        # Positionner l'image en haut à droite
-        h, w = img_resized.shape[:2]
-        frame[10 : 10 + h, frame.shape[1] - 10 - w : frame.shape[1] - 10] = img_resized
+                overlay_image(frame, peace_img, 50, 150)
 
     cv2.imshow("Gesture Detection", frame)
 
@@ -107,4 +102,3 @@ while True:
 
 cap.release()
 cv2.destroyAllWindows()
-# fsdgkjk
