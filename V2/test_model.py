@@ -8,9 +8,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "gesture_model.pkl")
 IMG_DIR = os.path.join(BASE_DIR, "img")
 
-# ===== DICTIONNAIRE DE CORRESPONDANCE (MAPPING) =====
-# À gauche : Le nom que tu tapes dans le terminal lors de la collecte (labels)
-# À droite : Le nom exact du fichier .png dans ton dossier /img (sans le .png)
+# ===== MAPPING (Identique à ton dictionnaire précédent) =====
 mapping = {
     "BRAVO": "applaudissements",
     "JOINTS": "bout_des_doigts_joints",
@@ -62,7 +60,7 @@ if os.path.exists(MODEL_PATH):
     model = joblib.load(MODEL_PATH)
     print("✅ Modèle chargé avec succès.")
 else:
-    print(f"❌ Erreur : Le fichier {MODEL_PATH} est introuvable !")
+    print(f"❌ Erreur : {MODEL_PATH} introuvable.")
     exit()
 
 # ===== CHARGEMENT DES EMOJIS =====
@@ -73,74 +71,71 @@ if os.path.exists(IMG_DIR):
         img = cv2.imread(img_path)
         if img is not None:
             gesture_images[ml_name] = img
-        else:
-            print(f"⚠️ Image introuvable : {file_name}.png")
     print(f"🖼️ {len(gesture_images)} images d'emojis chargées.")
 else:
-    print(f"❌ Erreur : Le dossier {IMG_DIR} est introuvable !")
+    print(f"❌ Dossier {IMG_DIR} introuvable.")
     exit()
 
-# ===== INITIALISATION MEDIAPIPE =====
+# ===== INITIALISATION MEDIAPIPE (PASSAGE À 2 MAINS) =====
 mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=0.7)
+# On change max_num_hands à 2
+hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.7)
 mp_draw = mp.solutions.drawing_utils
 
-# ===== FONCTION OVERLAY (Affiche l'emoji) =====
-def overlay_image(frame, img, x, y, size=150):
-    if img is None:
-        return
+def overlay_image(frame, img, x, y, size=120):
+    if img is None: return
     img_resized = cv2.resize(img, (size, size))
     h, w, _ = img_resized.shape
-    
-    if y + h <= frame.shape[0] and x + w <= frame.shape[1]:
-        frame[y:y+h, x:x+w] = img_resized
+    # Sécurité pour ne pas sortir du cadre
+    y1, y2 = max(0, y), min(frame.shape[0], y + h)
+    x1, x2 = max(0, x), min(frame.shape[1], x + w)
+    img_portion = img_resized[0:y2-y1, 0:x2-x1]
+    frame[y1:y2, x1:x2] = img_portion
 
 # ===== BOUCLE PRINCIPALE =====
 cap = cv2.VideoCapture(0)
 
-print("🚀 Lancement de la reconnaissance... Appuyez sur ECHAP pour quitter.")
-
 while True:
     ret, frame = cap.read()
-    if not ret:
-        break
+    if not ret: break
 
     frame = cv2.flip(frame, 1)
+    h_frame, w_frame, _ = frame.shape
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     result = hands.process(rgb)
 
     if result.multi_hand_landmarks:
+        # On boucle sur chaque main détectée (jusqu'à 2)
         for hand_landmarks in result.multi_hand_landmarks:
+            # 1. Dessin du squelette
             mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
+            # 2. Extraction des caractéristiques
             features = []
             for lm in hand_landmarks.landmark:
                 features.extend([lm.x, lm.y, lm.z])
 
+            # 3. Prédiction
             try:
-                # Prédiction du label (ex: "PEACE")
                 prediction = model.predict([features])[0]
                 gesture_name = str(prediction).upper()
-            except Exception as e:
+            except:
                 gesture_name = "ERREUR"
 
-            # Texte à l'écran
-            cv2.putText(frame, f"Geste: {gesture_name}", (10, 50),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            # 4. Calcul de la position pour l'emoji (au-dessus de la main)
+            # On prend le point 0 (poignet) pour positionner l'emoji
+            x_pos = int(hand_landmarks.landmark[0].x * w_frame)
+            y_pos = int(hand_landmarks.landmark[0].y * h_frame) - 150 # On l'affiche au-dessus
 
-            # Affichage de l'emoji via le mapping
+            # 5. Affichage du texte et de l'emoji
+            cv2.putText(frame, gesture_name, (x_pos, y_pos + 140),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+
             if gesture_name in gesture_images:
-                overlay_image(frame, gesture_images[gesture_name], 20, 80)
-            else:
-                cv2.putText(frame, "Emoji non trouve", (10, 100),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 1)
+                overlay_image(frame, gesture_images[gesture_name], x_pos - 60, y_pos)
 
-    cv2.imshow("Detection TIAGO - Labo CSIGS", frame)
-
-    if cv2.waitKey(1) & 0xFF == 27:
-        break
+    cv2.imshow("Detection TIAGO Multi-Mains", frame)
+    if cv2.waitKey(1) & 0xFF == 27: break
 
 cap.release()
 cv2.destroyAllWindows()
-
-#test11
